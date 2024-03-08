@@ -50,7 +50,7 @@ function solve_model(pld_scenarios::DataFrame, generation_scenarios::DataFrame, 
     if isequal(seasonal_contract, "trading")
         @constraint(model, [t = 1:T], 0 <= Q_trading[t] <= Q_seasonal[t] * Qmax_trading)
     else
-        @constraint(model, [t = 1:T - 1], Q_trading[t] == Q_trading[t + 1]*Qmax_trading)
+        @constraint(model, [t = 1:T - 1], Q_trading[t] == Q_trading[t + 1])
         @constraint(model, [t = 1:T], Q_trading[t] <= Qmax_trading * GF)
     end
     
@@ -84,8 +84,22 @@ function solve_model(pld_scenarios::DataFrame, generation_scenarios::DataFrame, 
     expected_revenue  = value(expected_revenue)
     cvar_revenue      = value.(cvar_revenue)
     revenue_scenarios = value.(R)
+
+    var_revenue    = quantile(sum(revenue_scenarios, dims =1)[:], 1 - α)
+    median_revenue = median(sum(revenue_scenarios, dims = 1))
+    metric         = λ * cvar_revenue + (1 - λ) * expected_revenue
+
+    df_Q                 = DataFrame("Q_large_corps" => Q_large_corps, "Q_big_accounts" => Q_big_accounts, "Q_trading" => Q_trading)
+    df_revenue_scenarios = DataFrame(revenue_scenarios, :auto)        
+    df_resume            = DataFrame("Expected Revenue" => expected_revenue, "Median Revenue" => median_revenue,
+                                     "CVaR" => cvar_revenue, "VaR" => var_revenue, "Risk" => expected_revenue - cvar_revenue,
+                                     "Metric" => metric)      
     
-    return Q_large_corps, Q_big_accounts, Q_trading, expected_revenue, cvar_revenue, revenue_scenarios
+    printstyled("Saving results...\n"; color = :yellow)                                  
+    CSV.write("optimal_Q.csv", df_Q, delim = ";")
+    CSV.write("revenue_scenarios.csv", df_revenue_scenarios, delim = ";")
+    CSV.write("resume.csv", df_resume, delim = ";")
+    
+    return df_Q, df_revenue_scenarios, df_resume
 end
 
-using CSV, DataFrames
